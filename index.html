@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<html>
+  <head>
+    <style>
+
+      svg rect.background {
+        cursor: default !important;
+      }
+      rect.bordered {
+        stroke: #FFFFFF;
+        stroke-width:2px;   
+      }
+
+      text.mono {
+        font-size: 9pt;
+        font-family: Consolas, courier;
+        fill: #000;
+      }
+
+      text.axis-workweek {
+        fill: #000;
+      }
+
+      text.axis-worktime {
+        fill: #000;
+      }
+
+      text.slider-text {
+        font-size: 12pt;
+        font-family: Consolas, courier;
+      }
+
+      .axis {
+        font-size: 10pt;
+        font-family: Consolas, courier;
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        user-select: none;
+      }
+
+      .axis .domain {
+        fill: none;
+        stroke: #000;
+        stroke-opacity: .3;
+        stroke-width: 10px;
+        stroke-linecap: round;
+      }
+
+      .axis .halo {
+        fill: none;
+        stroke: #ddd;
+        stroke-width: 8px;
+        stroke-linecap: round;
+      }
+
+      .slider .handle {
+        fill: #fff;
+        stroke: #000;
+        stroke-opacity: .5;
+        stroke-width: 1.25px;
+        pointer-events: none;
+      }
+  
+    </style>
+    <script src="http://d3js.org/d3.v3.js"></script>
+  </head>
+  <body>
+    <div id="chart"></div>
+    <div id="dataset-picker">
+    </div>
+    <script type="text/javascript">
+      var margin = { top: 50, right: 30, bottom: 250, left: 60 },
+          width = 960 - margin.left - margin.right,
+          height = 500 - margin.top - margin.bottom,
+          buckets = 9,
+          numYardageZones = 10,
+          numFourthZones = 4,
+          gridWidth = Math.floor(width / numYardageZones),
+          gridHeight = Math.floor(height / numFourthZones)
+          legendElementWidth = gridWidth*2,
+          colors = ["#ffffd9","#edf8b1","#c7e9b4","#7fcdbb","#41b6c4","#1d91c0","#225ea8","#253494","#081d58"], // alternatively colorbrewer.YlGnBu[9]
+          fourthZones = ["1-2 yds", "3-5 yds", "6-8 yds", "9+ yds"],
+          fieldZones = ["G", "10", "20", "30", "40", "50", "40", "30", "20", "10", "G"],
+          choices = ["Punt", "Kick FG", "Go For It"],
+          puntColor = [1, 0, 0],
+          fgColor = [0,1,0],
+          goforColor = [0,0,1],
+          currentDataSet = "";
+          datasets = ["data/2-1.csv", "data2.tsv"];
+
+      function dataset_string(timeValue, scoreValue) {
+        return "data/" + (Math.round(timeValue) + 1) + "-" + (Math.round(scoreValue) + 51) + ".csv";
+      }
+
+      var x_score = d3.scale.linear()
+          .domain([-50, 50])
+          .range([0, width])
+          .clamp(true);
+
+      var brush_score = d3.svg.brush()
+          .x(x_score)
+          .extent([0, 0])
+          .on("brush", brushed_score);
+
+      var x_time = d3.scale.linear()
+          .domain([1, 360])
+          .range([0, width])
+          .clamp(true);
+
+      var brush_time = d3.svg.brush()
+          .x(x_time)
+          .extent([0, 0])
+          .on("brush", brushed_time);
+
+      var svg = d3.select("#chart").append("svg")
+          .attr("width", width + margin.left + margin.right)
+          .attr("height", height + margin.top + margin.bottom)
+          .append("g")
+          .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+      var dayLabels = svg.selectAll(".dayLabel")
+          .data(fourthZones)
+          .enter().append("text")
+            .text(function (d) { return d; })
+            .attr("x", 0)
+            .attr("y", function (d, i) { return i * gridHeight; })
+            .style("text-anchor", "end")
+            .attr("transform", "translate(-6," + gridHeight / 1.5 + ")")
+            .attr("class", "dayLabel mono axis axis-workweek");
+
+      var timeLabels = svg.selectAll(".timeLabel")
+          .data(fieldZones)
+          .enter().append("text")
+            .text(function(d) { return d; })
+            .attr("x", function(d, i) { return i * gridWidth; })
+            .attr("y", 0)
+            .style("text-anchor", "middle")
+            .attr("transform", "translate(0, -6)")
+            .attr("class", "timelabel mono axis-worktime");
+
+      var timeLabelsBottom = svg.selectAll(".timeLabelBottom")
+          .data(fieldZones)
+          .enter().append("text")
+            .text(function(d) { return d; })
+            .attr("x", function(d, i) { return i * gridWidth; })
+            .attr("y", height + 20)
+            .style("text-anchor", "middle")
+            .attr("transform", "translate(0, -6)")
+            .attr("class", "timelabel mono axis-worktime");
+
+      var heatmapChart = function(csvFile) {
+        if(csvFile == currentDataSet) {
+          return;
+        }
+        d3.csv(csvFile,
+        function(d) {
+          return {
+            yard: +d.y,
+            fourthzone: +d.fzone,
+            punt: +d.punt,
+            kick: +d.kick,
+            gofor: +d.gofor,
+            red: +d.red,
+            green: +d.green,
+            blue: +d.blue
+          };
+        },
+        function(error, data) {
+          var colorScale = function(punt, kick, gofor) {
+            var norm = punt * puntColor[0] + kick * fgColor[0] + gofor * goforColor[0] + punt * puntColor[1] + kick * fgColor[1] + gofor * goforColor[1] + punt * puntColor[2] + kick * fgColor[2] + gofor * goforColor[2];
+            var r = Math.floor((punt * puntColor[0] + kick * fgColor[0] + gofor * goforColor[0]) * 255.0 / norm);
+            var g = Math.floor((punt * puntColor[1] + kick * fgColor[1] + gofor * goforColor[1]) * 255.0 / norm);
+            var b = Math.floor((punt * puntColor[2] + kick * fgColor[2] + gofor * goforColor[2]) * 255.0 / norm);
+            return "rgb(" + r + "," + g + "," + b + ")";
+          }
+
+          var cards = svg.selectAll(".hour")
+              .data(data, function(d) {return d.yard + ':' + d.fourthzone;});
+          console.log(cards);
+
+          cards.append("title");
+
+          cards.enter().append("rect")
+              .attr("x", function(d) { console.log(d.yard);return (d.yard - 1) * gridWidth; })
+              .attr("y", function(d) { return (d.fourthzone - 1) * gridHeight; })
+              .attr("rx", 4)
+              .attr("ry", 4)
+              .attr("class", "hour bordered")
+              .attr("width", gridWidth)
+              .attr("height", gridHeight)
+              .style("fill", "#FFFFFF");
+
+          cards//.transition().duration(500)
+              .style("fill", function(d) { return (d.yard - 1 < numYardageZones && d.fourthzone - 1 < numFourthZones)//? ("rgb(" + d.red + "," + d.green + "," + d.blue + ")") : "#FFFFFF";});
+              ? colorScale(d.punt, d.kick, d.gofor) : "#FFFFFF";});
+
+          cards.select("title").text(function(d) { return d.yard; });
+          
+          cards.exit().remove();
+
+          currentDataSet = csvFile;
+
+        });  
+      };
+
+      var colorScale = function(punt, kick, gofor) {
+            var norm = punt * puntColor[0] + kick * fgColor[0] + gofor * goforColor[0] + punt * puntColor[1] + kick * fgColor[1] + gofor * goforColor[1] + punt * puntColor[2] + kick * fgColor[2] + gofor * goforColor[2];
+            var r = Math.floor((punt * puntColor[0] + kick * fgColor[0] + gofor * goforColor[0]) * 255.0 / norm);
+            var g = Math.floor((punt * puntColor[1] + kick * fgColor[1] + gofor * goforColor[1]) * 255.0 / norm);
+            var b = Math.floor((punt * puntColor[2] + kick * fgColor[2] + gofor * goforColor[2]) * 255.0 / norm);
+            return "rgb(" + r + "," + g + "," + b + ")";
+          }
+
+      var legend = svg.selectAll(".legend")
+              .data([0,1,2]);
+
+      legend.append("g")
+          .attr("class", "legend");
+
+      legend.enter().append("rect")
+        .attr("x", function(d, i) { return legendElementWidth * i; })
+        .attr("y", height + 50)
+        .attr("width", legendElementWidth)
+        .attr("height", gridHeight / 2)
+        .style("fill", function(d, i) { 
+          if(i == 0) {
+            return colorScale(1,0,0);
+          }
+          else if (i == 1) {
+            return colorScale(0,1,0);
+          }
+          return colorScale(0,0,1);
+        });
+          
+
+      legend.enter().append("text")
+        .attr("class", "mono")
+        .text(function(d, i) { return choices[i]; })
+        .attr("x", function(d, i) { return legendElementWidth * i + 10; })
+        .attr("y", height + gridHeight / 2 + 62);
+
+      legend.exit().remove();
+
+      var moving_score,
+        currentValue_score = 0,
+        targetValue_score = 0,
+        alpha = .2,
+        slider_score_y = height + gridHeight / 2 + 110,
+        moving_time,
+        currentValue_time = 180,
+        targetValue_time = 180,
+        slider_time_y = slider_score_y + 70;
+
+      // https://bl.ocks.org/mbostock/6499018
+      // SCORE SLIDER
+      svg.append("g")
+        .attr("class", "x axis")
+        .attr("transform", "translate(0," + slider_score_y + ")")
+        .call(d3.svg.axis()
+          .scale(x_score)
+          .orient("bottom")
+          .tickFormat(function(d) { return (d > 0)? "+" + d: d; })
+          .tickSize(0)
+          .tickPadding(12))
+      .select(".domain")
+      .select(function() { return this.parentNode.appendChild(this.cloneNode(true)); })
+        .attr("class", "halo");
+
+      var slider_score = svg.append("g")
+        .attr("class", "slider")
+        .call(brush_score);
+
+      var text_score = slider_score.append("text").attr("class", "slider-text").text("Score differential: 0")
+          .attr("transform", "translate(0," + (slider_score_y - 12) + ")");
+
+      slider_score.selectAll(".extent,.resize")
+          .remove();
+
+      slider_score.select(".background")
+          .attr("height", 50)
+          .attr("transform", "translate(0," + (slider_score_y - 10) + ")");
+
+      var handle_score = slider_score.append("circle")
+        .attr("class", "handle")
+        .attr("transform", "translate(0," + slider_score_y+ ")")
+        .attr("r", 9);
+
+      slider_score
+        .call(brush_score.extent([0, 0]))
+        .call(brush_score.event);
+
+      function brushed_score() {
+        if (d3.event.sourceEvent) { // not a programmatic event
+          targetValue_score = x_score.invert(d3.mouse(this)[0]);
+          move_score();
+        } else {
+          currentValue_score = brush_score.extent()[0];
+          handle_score.attr("cx", x_score(currentValue_score));
+          heatmapChart(dataset_string(currentValue_time,currentValue_score));
+          text_score.text(function() {
+            var displayValue = Math.round(currentValue_score);
+            if(displayValue > 0) {
+              return "Score differential: +" + displayValue;
+            }
+            return "Score differential: " + displayValue;
+          });
+        }
+      }
+
+      function move_score() {
+        if (moving_score) return false;
+        moving_score = true;
+        d3.timer(function() {
+          currentValue_score = Math.abs(currentValue_score - targetValue_score) < 1e-3
+              ? targetValue_score
+              : targetValue_score * alpha + currentValue_score * (1 - alpha);
+
+          slider_score
+              .call(brush_score.extent([currentValue_score, currentValue_score]))
+              .call(brush_score.event);
+
+          return !(moving_score = currentValue_score !== targetValue_score);
+        });
+      }
+
+      // TIME REMAINING SLIDER
+      svg.append("g")
+        .attr("class", "x axis")
+        .attr("transform", "translate(0," + slider_time_y + ")")
+        .call(d3.svg.axis()
+          .scale(x_time)
+          .orient("bottom")
+          .tickValues([1, 45, 90, 135, 180, 225, 270, 315, 360])
+          .tickFormat(function(d,i) { return (i % 2 == 0)? "|": ("Q" + (9-i) / 2); })
+          .tickSize(0)
+          .tickPadding(10))
+      .select(".domain")
+      .select(function() { return this.parentNode.appendChild(this.cloneNode(true)); })
+        .attr("class", "halo");
+
+      var slider_time = svg.append("g")
+        .attr("class", "slider")
+        .call(brush_time);
+
+      var text_time = slider_time.append("text").attr("class", "slider-text").text("Time remaining: 0")
+          .attr("transform", "translate(0," + (slider_time_y - 12) + ")");
+
+      slider_time.selectAll(".extent,.resize")
+          .remove();
+
+      slider_time.select(".background")
+          .attr("height", 50)
+          .attr("transform", "translate(0," + (slider_time_y - 10) + ")");
+
+      var handle_time = slider_time.append("circle")
+        .attr("class", "handle")
+        .attr("transform", "translate(0," + slider_time_y+ ")")
+        .attr("r", 9);
+
+      slider_time
+        .call(brush_time.extent([currentValue_time, currentValue_time]))
+        .call(brush_time.event);
+
+      function brushed_time() {
+        if (d3.event.sourceEvent) { // not a programmatic event
+          targetValue_time = x_time.invert(d3.mouse(this)[0]);
+          move_time();
+        } else {
+          currentValue_time = brush_time.extent()[0];
+          handle_time.attr("cx", x_time(currentValue_time));
+          heatmapChart(dataset_string(currentValue_time,currentValue_score));
+          text_time.text(function() {
+            var displayValue = Math.round(currentValue_time);
+            var min = Math.floor((displayValue * 10) / 60) % 15;
+            var sec = (displayValue * 10) % 60;
+            if(min == 0 && sec == 0) {
+              min = 15;
+            }
+            var q = 4 - Math.floor((displayValue - 1) * 10 / 60 / 15);
+            return "Time remaining: " + min + ":" + ((sec == 0)? "00": sec) + " Q" + q;
+          });
+        }
+      }
+
+      function move_time() {
+        if (moving_time) return false;
+        moving_time = true;
+        d3.timer(function() {
+          currentValue_time = Math.abs(currentValue_time - targetValue_time) < 1e-3
+              ? targetValue_time
+              : targetValue_time * alpha + currentValue_time * (1 - alpha);
+
+          slider_time
+              .call(brush_time.extent([currentValue_time, currentValue_time]))
+              .call(brush_time.event);
+
+          return !(moving_time = currentValue_time !== targetValue_time);
+        });
+
+      }
+
+    </script>
+  </body>
+</html>
+
+
+
