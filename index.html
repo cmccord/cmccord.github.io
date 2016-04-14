@@ -9,6 +9,10 @@
       }
       rect.bordered {
         stroke: #FFFFFF;
+        stroke-width:2px;
+      }
+      rect.bordered:hover {
+        stroke: #000000;
         stroke-width:2px;   
       }
 
@@ -61,6 +65,22 @@
         stroke-width: 1.25px;
         pointer-events: none;
       }
+
+      div.tooltip { 
+          position: absolute;     
+          text-align: left;     
+          width: 85px;          
+          height: 35px;         
+          padding: 6px;       
+          font: 12px sans-serif; 
+          font-weight: bold;   
+          background: #ffffff; 
+          border: 1px;
+          border-style: solid;
+          border-color: #000000;    
+          border-radius: 2px;     
+          pointer-events: none;     
+      }
   
     </style>
     <script src="http://d3js.org/d3.v3.js"></script>
@@ -76,8 +96,9 @@
           buckets = 9,
           numYardageZones = 10,
           numFourthZones = 4,
-          gridWidth = Math.floor(width / numYardageZones),
-          gridHeight = Math.floor(height / numFourthZones)
+          gridMargin = 2,
+          gridWidth = Math.floor(width / numYardageZones - gridMargin),
+          gridHeight = Math.floor(height / numFourthZones - gridMargin),
           legendElementWidth = gridWidth*2,
           colors = ["#ffffd9","#edf8b1","#c7e9b4","#7fcdbb","#41b6c4","#1d91c0","#225ea8","#253494","#081d58"], // alternatively colorbrewer.YlGnBu[9]
           fourthZones = ["1-2 yds", "3-5 yds", "6-8 yds", "9+ yds"],
@@ -113,6 +134,11 @@
           .extent([0, 0])
           .on("brush", brushed_time);
 
+      // Define the div for the tooltip
+      var div = d3.select("body").append("div") 
+          .attr("class", "tooltip")       
+          .style("opacity", 0);
+
       var svg = d3.select("#chart").append("svg")
           .attr("width", width + margin.left + margin.right)
           .attr("height", height + margin.top + margin.bottom)
@@ -124,7 +150,7 @@
           .enter().append("text")
             .text(function (d) { return d; })
             .attr("x", 0)
-            .attr("y", function (d, i) { return i * gridHeight; })
+            .attr("y", function (d, i) { return i * (gridHeight + gridMargin); })
             .style("text-anchor", "end")
             .attr("transform", "translate(-6," + gridHeight / 1.5 + ")")
             .attr("class", "dayLabel mono axis axis-workweek");
@@ -133,7 +159,7 @@
           .data(fieldZones)
           .enter().append("text")
             .text(function(d) { return d; })
-            .attr("x", function(d, i) { return i * gridWidth; })
+            .attr("x", function(d, i) { return i * (gridWidth + gridMargin); })
             .attr("y", 0)
             .style("text-anchor", "middle")
             .attr("transform", "translate(0, -6)")
@@ -143,11 +169,16 @@
           .data(fieldZones)
           .enter().append("text")
             .text(function(d) { return d; })
-            .attr("x", function(d, i) { return i * gridWidth; })
+            .attr("x", function(d, i) { return i * (gridWidth + gridMargin); })
             .attr("y", height + 20)
             .style("text-anchor", "middle")
             .attr("transform", "translate(0, -6)")
             .attr("class", "timelabel mono axis-worktime");
+
+      var formatString = function(fraction) {
+        var i = Math.round(100*fraction);
+        return i + "%";
+      }
 
       var heatmapChart = function(csvFile) {
         if(csvFile == currentDataSet) {
@@ -179,17 +210,25 @@
               .data(data, function(d) {return d.yard + ':' + d.fourthzone;});
           console.log(cards);
 
-          cards.append("title");
+          //cards.append("title");
 
           cards.enter().append("rect")
-              .attr("x", function(d) { console.log(d.yard);return (d.yard - 1) * gridWidth; })
-              .attr("y", function(d) { return (d.fourthzone - 1) * gridHeight; })
+              .attr("x", function(d) { return (d.yard - 1) * gridWidth + (d.yard-1)*gridMargin; })
+              .attr("y", function(d) { return (d.fourthzone - 1) * gridHeight + (d.fourthzone-1)*gridMargin; })
               .attr("rx", 4)
               .attr("ry", 4)
               .attr("class", "hour bordered")
               .attr("width", gridWidth)
               .attr("height", gridHeight)
-              .style("fill", "#FFFFFF");
+              .style("fill", "#FFFFFF")
+              .on("mouseover", function(d) {    
+                  div.style("opacity", 1);    
+                  div.html("Punt: " + formatString(d.punt) + "<br/>" + "Kick FG: " + formatString(d.kick) + "<br/>Go for it: " + formatString(d.gofor))
+                  .style("left", (d3.event.pageX - 42) + "px")   
+                  .style("top", (d3.event.pageY - 45) + "px");
+              }).on("mouseout", function(d) {   
+                  div.style("opacity", 0); 
+              });
 
           cards//.transition().duration(500)
               .style("fill", function(d) { return (d.yard - 1 < numYardageZones && d.fourthzone - 1 < numFourthZones)//? ("rgb(" + d.red + "," + d.green + "," + d.blue + ")") : "#FFFFFF";});
