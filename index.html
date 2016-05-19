@@ -86,8 +86,12 @@
     <script src="http://d3js.org/d3.v3.js"></script>
   </head>
   <body>
+    <div>
     <div id="chart"></div>
-    <div id="dataset-picker">
+    <select id="selector" style="margin-left:60px">
+      <option value="0">You kick off to start 2nd half</option>
+      <option value="1">You receive 2nd half kickoff</option>
+    </select>
     </div>
     <script type="text/javascript">
       var margin = { top: 50, right: 30, bottom: 250, left: 60 },
@@ -111,7 +115,13 @@
           datasets = ["data/2-1.csv", "data2.tsv"];
 
       function dataset_string(timeValue, scoreValue) {
-        return "data/" + (Math.round(timeValue) + 1) + "-" + (Math.round(scoreValue) + 51) + ".csv";
+        var t = Math.round(timeValue) + 1;
+        if (selectorIndex == 1 && t >= 182) {
+          return "data_base/" + (Math.round(timeValue) + 1) + "-" + (Math.round(scoreValue) + 51) + "_opp.csv";
+        }
+        else {
+          return "data_base/" + (Math.round(timeValue) + 1) + "-" + (Math.round(scoreValue) + 51) + ".csv";
+        }
       }
 
       var x_score = d3.scale.linear()
@@ -289,7 +299,8 @@
         moving_time,
         currentValue_time = 180,
         targetValue_time = 180,
-        slider_time_y = slider_score_y + 70;
+        slider_time_y = slider_score_y + 70,
+        selectorIndex = 0;
 
       // https://bl.ocks.org/mbostock/6499018
       // SCORE SLIDER
@@ -438,6 +449,15 @@
         });
 
       }
+
+      // Pulldown Menu Selector
+      var selectorChanged = function() {
+        selectorIndex = d3.event.target.selectedIndex;
+        heatmapChart(dataset_string(currentValue_time, currentValue_score));
+      }
+
+      d3.select("#selector").on("change", selectorChanged);
+      document.getElementById("selector").value = "0"
 
     </script>
   </body>
